@@ -92,7 +92,7 @@ cacheDir=''             # You may want to specify a specific cache directory for
 # 1.3 Added support for requirements with no test cases assigned
 #     Date 25-APR-2013
 #     Author IHN
-# 1.4 Reworked for Distalmotion
+# 1.4 Refractoring for Distalmotion
 #     Date 05-JAN-2021
 #     Author Marta Ferrer
 
@@ -169,16 +169,17 @@ class PolarionGateway(base_gateway.BaseGateway):
 
         # Firmware under test
         self.firmwareUnderTest = settings['firmwareUT']
-        self.PolarionDocument = settings['documentPolarion']
+        self.polarionDocument = settings['documentPolarion']
+        self.testRunTemplate = settings['testRunTemplate']
         self.SwVersion = settings["softwareVersion"]
         self.testRunID = self.firmwareUnderTest + 'Unit Test Sw Version ' + self.SwVersion
         self.queryRefinement = ''
 
         # Polarion settings
-        self.username = ''
-        self.password = ''
-        self.polarionWebServer = ''
-        self.projectID = ''
+        self.username = 'build.automation'
+        self.password = 'egkwAPSbDW7n9dv9'
+        self.polarionWebServer = 'http://dis9310s.dis.lan/polarion/ws/services/'
+        self.projectID = 'DistalMotion'
         self.workItemType = 'softwareUnitTest'
         self.testCaseType = 'softwareUnitTest'
         self.treatTestCaseResultNoneAsPassed = True
@@ -218,8 +219,7 @@ class PolarionGateway(base_gateway.BaseGateway):
         self.ocTestManagement.setduration(days=cacheDays)
         self.ocTestManagement.setlocation(cacheDir)
         self._trace("Creating testManagement client", 2)
-        self.testManagement   = Client(self.polarionWebServer+'TestManagementWebService?wsdl',
-                                       plugins=[PolarionTestManagementFixer()], cache=self.ocTestManagement)
+        self.testManagement   = Client(self.polarionWebServer+'TestManagementWebService?wsdl', plugins=[PolarionTestManagementFixer()], cache=self.ocTestManagement)
         self._trace("testManagement client: " + str(self.testManagement), 5)
 
         # Init session Client
@@ -389,6 +389,17 @@ class PolarionGateway(base_gateway.BaseGateway):
         self.fullList = [attributesListWithKey] + [workItemTypeListWithKey] + [testRunTemplateTypeListWithKey]
         return True
 
+    def get_all_list_data(self):
+        # Get values that can be used in Import and Export tabs
+        # of the Requirements Gateway window.
+
+        if not self._get_list_data_from_server():
+          return (False, [])
+
+        # Return a tuple containing a boolean value representing success
+        # and a list value containing the sub lists.
+        return (True, self.fullList)
+
     def _assign_utf8 (self, textString):
         # Converts and returns given text into UTF-8 decoded string.
         # First eliminate character that hit the byte order mark (BOM) to avoid UnicodeEncodeError
@@ -505,7 +516,7 @@ class PolarionGateway(base_gateway.BaseGateway):
             reqQueryString = 'project.id:' + self.projectID + ' AND type:(' + self.workItemType +')'
 
         # Add the document ID as a query
-        reqQueryString += ' AND document.id:(' + self.PolarionDocument +')'
+        reqQueryString += ' AND document.id:(' + self.polarionDocument +')'
 
         # get a Python list with all requirements from Polarion
         sortString = 'id'
@@ -553,17 +564,63 @@ class PolarionGateway(base_gateway.BaseGateway):
         # Return whether test case driven test data can be exported using this module.
         return True
 
-    # def add_data_for_export(self, **req_data):
-    #     # Add test data (req_data) for a single requirement to be exported once
-    #     # start_export is called.  Return whether the data was added
-    #     # successfully.
-    #     try:
-    #         key = req_data.get('key', None)
-    #         self.export_data[key] = req_data
-    #         return True
-    #     except Exception as e:
-    #         self._set_error_trace("Exception in add_data_for_export: " + str(e))
-    #     return False
+    def add_data_for_export(self, **req_data):
+        # Add test data (req_data) for a single requirement to be exported once
+        # start_export is called.  Return whether the data was added
+        # successfully.
+        try:
+            key = req_data.get('key', None)
+            self.export_data[key] = req_data
+            return True
+        except Exception as e:
+            self._set_error_trace("Exception in add_data_for_export: " + str(e))
+        return False
+        
+    # MAFE: Create function to read SW version in order to add it in the test run title
+    def _get_sw_version(self):
+        swVersionArray = ['0','0','0']
+
+        # Read the corresponding AppSoftwareVersion.h file
+        if(self.settings.get('polarion_test_run_id','') == 'Handle Control Unit Test'):
+            f=open('..\\HandleControl\\1_APP\\AppSoftwareVersion.h', 'r')
+        elif(self.settings.get('polarion_test_run_id','') == 'Hub Control Unit Test'):
+            f=open('..\\HubControl\\1_APP\\AppSoftwareVersion.h', 'r')
+        elif(self.settings.get('polarion_test_run_id','') == 'Hub Safety Unit Test'):
+            f=open('..\\HubSafety\\1_APP\\AppSoftwareVersion.h', 'r')
+        elif(self.settings.get('polarion_test_run_id','') == 'MacroSensor Unit Test'):
+            f=open('..\\MacroSensorControl\\1_APP\\AppSoftwareVersion.h', 'r')
+        elif(self.settings.get('polarion_test_run_id','') == 'Generics Piccolo Unit Test'):
+            f=open('..\\GenericsPiccolo\\AppSoftwareVersion.h', 'r')
+        elif(self.settings.get('polarion_test_run_id','') == 'Generics Delfino Unit Test'):
+            f=open('..\\GenericsDelfino\\AppSoftwareVersion.h', 'r')
+        elif(self.settings.get('polarion_test_run_id','') == 'Supervisor Unit Test'):
+            f=open('..\\Supervisor\\1_APP\\Device\\AppSoftwareVersion.h', 'r')
+        elif(self.settings.get('polarion_test_run_id','') == 'Main Control Unit Test'):
+            f=open('..\\MainControl\\1_APP\\AppSoftwareVersion.h', 'r')
+        elif(self.settings.get('polarion_test_run_id','') == 'Main Safety Unit Test'):
+            f=open('..\\MainSafety\\1_APP\\AppSoftwareVersion.h', 'r')
+        else:
+            self._trace ("Unknown Project ID "+str(self.settings.get('polarion_test_run_id','')), 3)
+
+        contents = f.readlines()
+        
+        i=0
+        for line in contents:
+            if (('SOFTWAREVERSION_MAJOR_STRING' in line) or
+            ('SOFTWAREVERSION_MINOR_STRING' in line) or
+            ('SOFTWAREVERSION_REVISION_STRING' in line)):
+                #Take sw version major string
+                firstDelPos = line.find("\"")  # get the position of delimiter "
+                secondDelPos = line.find("\" ")  # get the position of delimiter "
+                swVersionArray[i] = line[firstDelPos + 1:secondDelPos]  # get the string between them
+                i=i+1
+                # Break once all parts of the SW version are read
+                if(i==3):
+                    break
+
+        # Parse all strings to create the sw version
+        swVersion =  swVersionArray[0]+'.'+ swVersionArray[1]+'.'+ swVersionArray[2]
+        return swVersion
         
     def add_testcase_data_for_export(self, **tc_data):
         # Add testcase-keyed test data (tc_data) for a single test case to be exported once
@@ -736,7 +793,7 @@ class PolarionGateway(base_gateway.BaseGateway):
                 #MAFE: Substitute CreateTestRun with CreateTestRunWithTitle to include the package name in the test run
                 #The second argument (test run ID) is left empty since Polarion will set automatically the time stamp.
                 #trUri = self.testManagement.service.createTestRun(self.projectID, self.testRunID, 'Empty')
-                trUri = self.testManagement.service.createTestRunWithTitle(self.projectID, '', self.testRunID, 'Empty')
+                trUri = self.testManagement.service.createTestRunWithTitle(self.projectID, '', self.testRunID,  self.testRunTemplate)
                 testRun = self.testManagement.service.getTestRunByUri(trUri)
             except Exception as e:
                 self._set_error_trace("Exception in create/getTestRun: " + str(e))
